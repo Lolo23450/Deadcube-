@@ -2369,37 +2369,92 @@
         }
 
         createHitEffect(position) {
+          const effectGroup = new THREE.Group();
 
-          const particles = new THREE.Group();
+          for (let i = 0; i < 6; i++) {
+            const dir = new THREE.Vector3(
+              (Math.random() - 0.5),
+              (Math.random() - 0.5),
+              (Math.random() - 0.5)
+            ).normalize();
 
-          for (let i = 0; i < 8; i++) {
-            const particleGeom = new THREE.SphereGeometry(0.05);
-            const particleMat = new THREE.MeshBasicMaterial({ 
+            const length = 1 + Math.random() * 0.7;
+            const segments = 4 + Math.floor(Math.random() * 2);
+            const points = [];
+            let current = new THREE.Vector3(0, 0, 0);
+
+            for (let s = 0; s <= segments; s++) {
+              const step = dir.clone().multiplyScalar((length / segments) * s);
+              const offset = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.2,
+                (Math.random() - 0.5) * 0.2,
+                (Math.random() - 0.5) * 0.2
+              );
+              points.push(step.add(offset).clone());
+            }
+
+            const geom = new THREE.BufferGeometry().setFromPoints(points);
+            const mat = new THREE.LineBasicMaterial({
               color: 0x00ffff,
               transparent: true,
-              opacity: 0.8
+              opacity: 0.9,
+              linewidth: 4
             });
-            const particle = new THREE.Mesh(particleGeom, particleMat);
 
+            const line = new THREE.Line(geom, mat);
+            line.position.copy(position);
+            effectGroup.add(line);
+          }
+
+          for (let i = 0; i < 12; i++) {
+            const particleGeom = new THREE.SphereGeometry(0.03);
+            const particleMat = new THREE.MeshBasicMaterial({
+              color: 0x88ffff,
+              transparent: true,
+              opacity: 0.9
+            });
+
+            const particle = new THREE.Mesh(particleGeom, particleMat);
             particle.position.copy(position);
-            particle.position.add(new THREE.Vector3(
+            particle.velocity = new THREE.Vector3(
               (Math.random() - 0.5) * 2,
               (Math.random() - 0.5) * 2,
               (Math.random() - 0.5) * 2
-            ));
+            ).multiplyScalar(0.5 + Math.random());
 
-            particles.add(particle);
+            effectGroup.add(particle);
           }
 
-          scene.add(particles);
+          scene.add(effectGroup);
 
-          setTimeout(() => {
-            scene.remove(particles);
-            particles.children.forEach(child => {
-              child.geometry.dispose();
-              child.material.dispose();
+          const startTime = performance.now();
+          const duration = 500;
+
+          const animateEffect = () => {
+            const elapsed = performance.now() - startTime;
+            const t = elapsed / duration;
+
+            effectGroup.children.forEach(child => {
+              if (child.material) {
+                child.material.opacity = Math.max(0, 1 - t);
+              }
+              if (child.velocity) {
+                child.position.add(child.velocity.clone().multiplyScalar(0.05));
+                child.velocity.multiplyScalar(0.9);
+              }
             });
-          }, 1000);
+
+            if (elapsed < duration) {
+              requestAnimationFrame(animateEffect);
+            } else {
+              scene.remove(effectGroup);
+              effectGroup.children.forEach(child => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) child.material.dispose();
+              });
+            }
+          };
+          animateEffect();
         }
 
         destroy() {
@@ -2580,22 +2635,52 @@
           this.createBarrierPhysics();
 
           if (typeof createPointLight === 'function') {
-            this.light = createPointLight(position, 0xff6600, 2, 15);
+            this.light = createPointLight(position, 0x44aaff, 3, 20);
           }
         }
 
         createBarrierMesh() {
-
           const mainGeometry = new THREE.BoxGeometry(this.size, this.size, this.size);
+          
+          const edgeGeometry = new THREE.EdgesGeometry(mainGeometry);
+          const edgeMaterial = new THREE.LineBasicMaterial({ 
+            color: 0x44ccff, 
+            linewidth: 2,
+            transparent: true,
+            opacity: 0.8
+          });
+          
           const mainMaterial = new THREE.MeshStandardMaterial({
-            color: 0xff6600,
-            emissive: 0x442200,
-            emissiveIntensity: 0.4,
-            metalness: 0.6,
-            roughness: 0.3
+            color: 0x0a1a2a,
+            emissive: 0x0066aa,
+            emissiveIntensity: 0.3,
+            metalness: 0.9,
+            roughness: 0.1,
+            envMapIntensity: 1.0
           });
 
           this.mesh = new THREE.Mesh(mainGeometry, mainMaterial);
+          
+          this.meshEdges = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+          this.mesh.add(this.meshEdges);
+          
+          const detailGeometry = new THREE.SphereGeometry(0.1, 8, 6);
+          const detailMaterial = new THREE.MeshStandardMaterial({
+            color: 0x00aadd,
+            emissive: 0x0088cc,
+            emissiveIntensity: 0.8,
+            metalness: 0.8,
+            roughness: 0.2
+          });
+
+          for (let x = -1; x <= 1; x += 2) {
+            for (let z = -1; z <= 1; z += 2) {
+              const detail = new THREE.Mesh(detailGeometry, detailMaterial);
+              detail.position.set(x * this.size * 0.4, this.size * 0.4, z * this.size * 0.4);
+              this.mesh.add(detail);
+            }
+          }
+
           this.mesh.position.copy(this.body.position);
           this.mesh.castShadow = true;
           this.mesh.receiveShadow = true;
@@ -2605,7 +2690,6 @@
         }
 
         createBarrierField() {
-
           const fieldGeometry = new THREE.BoxGeometry(
             this.barrierSize.width,
             this.barrierSize.height,
@@ -2613,17 +2697,62 @@
           );
 
           const fieldMaterial = new THREE.MeshStandardMaterial({
-            color: 0xff8844,
+            color: 0x00aaff,
             transparent: true,
-            opacity: 0.3,
-            emissive: 0xff4400,
-            emissiveIntensity: 0.2,
-            side: THREE.DoubleSide
+            opacity: 0.4,
+            emissive: 0x0066aa,
+            emissiveIntensity: 0.5,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
           });
 
           this.barrierField = new THREE.Mesh(fieldGeometry, fieldMaterial);
+          
+          const coreGeometry = new THREE.BoxGeometry(1,1,1);
+          
+          const coreMaterial = new THREE.MeshStandardMaterial({
+            color: 0x44aaff,
+            transparent: true,
+            opacity: 0.6,
+            emissive: 0x2266aa,
+            emissiveIntensity: 0.7,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+          });
+          
+          this.barrierCore = new THREE.Mesh(coreGeometry, coreMaterial);
+          this.barrierField.add(this.barrierCore);
+          
+          const particleGeometry = new THREE.SphereGeometry(0.02, 4, 3);
+          const particleMaterial = new THREE.MeshBasicMaterial({
+            color: 0x66ccff,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending
+          });
+          
+          this.energyParticles = new THREE.Group();
+          for (let i = 0; i < 20; i++) {
+            const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+            particle.position.set(
+              (Math.random() - 0.5) * this.barrierSize.width,
+              (Math.random() - 0.5) * this.barrierSize.height,
+              (Math.random() - 0.5) * this.barrierSize.depth
+            );
+            particle.userData = {
+              originalPosition: particle.position.clone(),
+              offset: Math.random() * Math.PI * 2,
+              speed: 0.5 + Math.random() * 1.5
+            };
+            this.energyParticles.add(particle);
+          }
+          
+          this.barrierField.add(this.energyParticles);
+
           this.barrierField.position.copy(this.mesh.position);
-          this.barrierField.position.y += 1; 
+          this.barrierField.position.y += 1;
           this.barrierField.userData.isBarrierField = true;
           this.barrierField.userData.parentBarrier = this;
 
@@ -2647,7 +2776,6 @@
         }
 
         createBarrierPhysics() {
-
           const shape = new CANNON.Box(new CANNON.Vec3(this.size / 2, this.size / 2, this.size / 2));
           this.body = new CANNON.Body({ mass: 0 });
           this.body.addShape(shape);
@@ -2664,6 +2792,11 @@
           this.originalColor = this.mesh.material.color.clone();
           this.originalEmissive = this.mesh.material.emissive.clone();
           this.originalEmissiveIntensity = this.mesh.material.emissiveIntensity;
+          
+          this.originalFieldColor = this.barrierField.material.color.clone();
+          this.originalFieldEmissive = this.barrierField.material.emissive.clone();
+          this.originalCoreColor = this.barrierCore.material.color.clone();
+          this.originalCoreEmissive = this.barrierCore.material.emissive.clone();
         }
 
         checkLaserCollision(laser) {
@@ -2693,7 +2826,6 @@
           if (this.destroyedLasers >= this.maxLasersBeforeOverload) {
             this.overloadBarrier();
           } else {
-
             this.showBlockEffect();
           }
 
@@ -2702,41 +2834,77 @@
         }
 
         createDestructionEffect(position) {
-
-          const sparkCount = 12;
+          const sparkCount = 20;
           const sparks = new THREE.Group();
 
           for (let i = 0; i < sparkCount; i++) {
-            const sparkGeometry = new THREE.SphereGeometry(0.03);
+            const sparkGeometry = new THREE.SphereGeometry(0.04 + Math.random() * 0.02);
             const sparkMaterial = new THREE.MeshBasicMaterial({
-              color: Math.random() > 0.5 ? 0xff6600 : 0xffaa44,
+              color: new THREE.Color().setHSL(0.1 + Math.random() * 0.2, 1, 0.5 + Math.random() * 0.5),
               transparent: true,
-              opacity: 0.9
+              opacity: 0.9,
+              blending: THREE.AdditiveBlending
             });
 
             const spark = new THREE.Mesh(sparkGeometry, sparkMaterial);
             spark.position.copy(position);
 
             const direction = new THREE.Vector3(
-              (Math.random() - 0.5) * 4,
-              (Math.random() - 0.5) * 4,
-              (Math.random() - 0.5) * 4
+              (Math.random() - 0.5) * 6,
+              Math.random() * 3 + 1,
+              (Math.random() - 0.5) * 6
             );
             spark.userData.velocity = direction;
+            spark.userData.gravity = -0.1;
+            spark.userData.drag = 0.98;
 
             sparks.add(spark);
+          }
+          
+          for (let i = 0; i < 3; i++) {
+            const ringGeometry = new THREE.RingGeometry(0.1, 0.2, 16);
+            const ringMaterial = new THREE.MeshBasicMaterial({
+              color: 0x44aaff,
+              transparent: true,
+              opacity: 0.8,
+              side: THREE.DoubleSide,
+              blending: THREE.AdditiveBlending
+            });
+            
+            const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+            ring.position.copy(position);
+            ring.rotation.x = Math.random() * Math.PI;
+            ring.rotation.y = Math.random() * Math.PI;
+            ring.userData.scale = 0.1;
+            ring.userData.scaleSpeed = 0.3 + Math.random() * 0.2;
+            
+            sparks.add(ring);
           }
 
           scene.add(sparks);
 
           const animateSparks = () => {
-            sparks.children.forEach(spark => {
-              spark.position.add(spark.userData.velocity.multiplyScalar(0.05));
-              spark.material.opacity *= 0.95;
-              spark.userData.velocity.multiplyScalar(0.98); 
+            let allFaded = true;
+            
+            sparks.children.forEach(child => {
+              if (child.geometry instanceof THREE.SphereGeometry) {
+                child.userData.velocity.y += child.userData.gravity;
+                child.userData.velocity.multiplyScalar(child.userData.drag);
+                child.position.add(child.userData.velocity.clone().multiplyScalar(0.02));
+                child.material.opacity *= 0.94;
+              } else if (child.geometry instanceof THREE.RingGeometry) {
+                child.userData.scale += child.userData.scaleSpeed;
+                child.scale.setScalar(child.userData.scale);
+                child.material.opacity *= 0.92;
+                child.rotation.z += 0.1;
+              }
+              
+              if (child.material.opacity > 0.05) {
+                allFaded = false;
+              }
             });
 
-            if (sparks.children[0].material.opacity > 0.1) {
+            if (!allFaded) {
               requestAnimationFrame(animateSparks);
             } else {
               scene.remove(sparks);
@@ -2751,25 +2919,71 @@
         }
 
         showBlockEffect() {
-
-          this.barrierField.material.emissiveIntensity = 0.8;
-          this.mesh.material.emissiveIntensity = 0.8;
+          const intensityPeak = 1.2;
+          const colorShift = new THREE.Color(0xffffff);
+          
+          this.mesh.material.emissiveIntensity = intensityPeak;
+          this.mesh.material.emissive.lerp(colorShift, 0.3);
+          
+          this.barrierField.material.emissiveIntensity = intensityPeak;
+          this.barrierCore.material.emissiveIntensity = intensityPeak * 1.5;
+          
+          if (this.meshEdges) {
+            this.meshEdges.material.opacity = 1.0;
+            this.meshEdges.material.color.setHex(0xffffff);
+          }
 
           if (this.light) {
-            this.light.intensity = 4;
+            this.light.intensity = 6;
+            this.light.color.setHex(0xffffff);
           }
+          
+          const rippleGeometry = new THREE.RingGeometry(0.5, 1.0, 16);
+          const rippleMaterial = new THREE.MeshBasicMaterial({
+            color: 0x44aaff,
+            transparent: true,
+            opacity: 0.8,
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending
+          });
+          
+          const ripple = new THREE.Mesh(rippleGeometry, rippleMaterial);
+          ripple.position.copy(this.barrierField.position);
+          ripple.rotation.x = -Math.PI / 2;
+          scene.add(ripple);
+          
+          const animateRipple = () => {
+            ripple.scale.multiplyScalar(1.1);
+            ripple.material.opacity *= 0.9;
+            
+            if (ripple.material.opacity > 0.1) {
+              requestAnimationFrame(animateRipple);
+            } else {
+              scene.remove(ripple);
+              ripple.geometry.dispose();
+              ripple.material.dispose();
+            }
+          };
+          animateRipple();
 
           setTimeout(() => {
             if (this.barrierField.material) {
-              this.barrierField.material.emissiveIntensity = 0.2;
+              this.barrierField.material.emissiveIntensity = 0.5;
+              this.barrierCore.material.emissiveIntensity = 0.7;
             }
             if (this.mesh.material) {
               this.mesh.material.emissiveIntensity = this.originalEmissiveIntensity;
+              this.mesh.material.emissive.copy(this.originalEmissive);
+            }
+            if (this.meshEdges) {
+              this.meshEdges.material.opacity = 0.8;
+              this.meshEdges.material.color.setHex(0x44ccff);
             }
             if (this.light) {
-              this.light.intensity = 2;
+              this.light.intensity = 3;
+              this.light.color.setHex(0x44aaff);
             }
-          }, 300);
+          }, 400);
         }
 
         overloadBarrier() {
@@ -2777,18 +2991,29 @@
           this.overloaded = true;
           this.lastOverloadTime = performance.now();
 
-          this.mesh.material.color.set(0xff3333);
-          this.mesh.material.emissive.set(0x660000);
-          this.barrierField.material.opacity = 0.1;
+          this.mesh.material.color.set(0x660000);
+          this.mesh.material.emissive.set(0xff0000);
+          this.mesh.material.emissiveIntensity = 0.8;
+          
+          this.barrierField.material.opacity = 0.15;
           this.barrierField.material.color.set(0xff3333);
+          this.barrierField.material.emissive.set(0x880000);
+          
+          this.barrierCore.material.color.set(0xff0000);
+          this.barrierCore.material.emissive.set(0xaa0000);
+
+          if (this.meshEdges) {
+            this.meshEdges.material.color.setHex(0xff0000);
+            this.meshEdges.material.opacity = 1.0;
+          }
 
           if (this.light) {
-            this.light.color.setHex(0xff3333);
-            this.light.intensity = 1;
+            this.light.color.setHex(0xff0000);
+            this.light.intensity = 4;
           }
 
           this.active = false;
-          this.setBarrierCollision(false); 
+          this.setBarrierCollision(false);
         }
 
         rechargeBarrier() {
@@ -2799,14 +3024,28 @@
 
           this.mesh.material.color.copy(this.originalColor);
           this.mesh.material.emissive.copy(this.originalEmissive);
-          this.barrierField.material.opacity = 0.3;
-          this.barrierField.material.color.set(0xff8844);
-          this.setBarrierCollision(true); 
+          this.mesh.material.emissiveIntensity = this.originalEmissiveIntensity;
+          
+          this.barrierField.material.opacity = 0.4;
+          this.barrierField.material.color.copy(this.originalFieldColor);
+          this.barrierField.material.emissive.copy(this.originalFieldEmissive);
+          
+          this.barrierCore.material.color.copy(this.originalCoreColor);
+          this.barrierCore.material.emissive.copy(this.originalCoreEmissive);
+          
+          if (this.meshEdges) {
+            this.meshEdges.material.color.setHex(0x44ccff);
+            this.meshEdges.material.opacity = 0.8;
+          }
+          
+          this.setBarrierCollision(true);
 
           if (this.light) {
-            this.light.color.setHex(0xff6600);
-            this.light.intensity = 2;
+            this.light.color.setHex(0x44aaff);
+            this.light.intensity = 3;
           }
+          
+          this.showBlockEffect();
         }
 
         update() {
@@ -2829,11 +3068,39 @@
             if (currentTime - this.lastOverloadTime >= this.rechargeTime) {
               this.rechargeBarrier();
             }
+            
+            const flicker = Math.sin(currentTime * 0.02) * 0.3 + 0.7;
+            this.mesh.material.emissiveIntensity = 0.8 * flicker;
+            if (this.light) {
+              this.light.intensity = 4 * flicker;
+            }
           }
 
           if (this.barrierField && this.active && !this.overloaded) {
-            const time = performance.now() * 0.002;
-            this.barrierField.material.emissiveIntensity = 0.2 + 0.1 * Math.sin(time * 3);
+            const time = performance.now() * 0.001;
+            
+            this.barrierField.material.emissiveIntensity = 0.5 + 0.2 * Math.sin(time * 2);
+            this.barrierCore.material.emissiveIntensity = 0.7 + 0.3 * Math.sin(time * 2.5);
+            
+            this.barrierCore.rotation.y = time * 0.5;
+            this.barrierCore.rotation.x = time * 0.3;
+            
+            if (this.energyParticles) {
+              this.energyParticles.children.forEach((particle, index) => {
+                const userData = particle.userData;
+                const t = time * userData.speed + userData.offset;
+                
+                particle.position.x = userData.originalPosition.x + Math.sin(t) * 0.3;
+                particle.position.y = userData.originalPosition.y + Math.cos(t * 1.3) * 0.2;
+                particle.position.z = userData.originalPosition.z + Math.sin(t * 0.7) * 0.3;
+                
+                particle.material.opacity = 0.6 + 0.4 * Math.sin(t * 3);
+              });
+            }
+            
+            if (this.light) {
+              this.light.intensity = 3 + Math.sin(time * 1.5) * 0.5;
+            }
           }
         }
 
@@ -2855,24 +3122,51 @@
           super.toggle();
 
           if (this.active && !this.overloaded) {
-
-            this.barrierField.material.opacity = 0.3;
-            this.setBarrierCollision(true);  
+            this.barrierField.material.opacity = 0.4;
+            this.barrierCore.material.opacity = 0.6;
+            this.setBarrierCollision(true);
             console.log("Laser barrier activated");
+            
+            if (this.light) {
+              this.light.intensity = 4;
+              setTimeout(() => {
+                if (this.light) this.light.intensity = 3;
+              }, 300);
+            }
           } else {
-
-            this.barrierField.material.opacity = 0.05;
-            this.setBarrierCollision(false); 
+            this.barrierField.material.opacity = 0.1;
+            this.barrierCore.material.opacity = 0.1;
+            this.setBarrierCollision(false);
             console.log("Laser barrier deactivated");
+            
+            if (this.light) {
+              this.light.intensity = 1;
+            }
           }
         }
 
         destroy() {
-
           if (this.barrierField) {
             scene.remove(this.barrierField);
             this.barrierField.geometry.dispose();
             this.barrierField.material.dispose();
+            
+            if (this.barrierCore) {
+              this.barrierCore.geometry.dispose();
+              this.barrierCore.material.dispose();
+            }
+            
+            if (this.energyParticles) {
+              this.energyParticles.children.forEach(particle => {
+                particle.geometry.dispose();
+                particle.material.dispose();
+              });
+            }
+          }
+
+          if (this.meshEdges) {
+            this.meshEdges.geometry.dispose();
+            this.meshEdges.material.dispose();
           }
 
           if (this.fieldBody) {
