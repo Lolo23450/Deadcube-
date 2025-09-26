@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Deadcore Sequel Prototype</title>
+    <title>Deadcube Prototype</title>
     <style>
       body {
         margin: 0;
@@ -2801,6 +2801,7 @@
           this.mesh.material.emissive.copy(this.originalEmissive);
           this.barrierField.material.opacity = 0.3;
           this.barrierField.material.color.set(0xff8844);
+          this.setBarrierCollision(true); 
 
           if (this.light) {
             this.light.color.setHex(0xff6600);
@@ -3335,6 +3336,9 @@
       let currentLevel = 0;
       let postProcessor = null; 
       const levels = [
+        () => {
+          blocks.push(new PlatformBlock(new THREE.Vector3(0, -5, 0), 15, true));
+        },
         () => {
 
           const config = {
